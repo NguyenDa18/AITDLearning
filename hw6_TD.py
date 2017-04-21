@@ -257,16 +257,48 @@ class AIPlayer(Player):
     ##
     def getNextState(self, currentState, move):
         currentState = currentState.fastclone()
+
+        clonedInventory = None
+        foeInventory = None
+
+        #set the player inventories
+        if currentState.inventories[PLAYER_ONE].playerId == self.playerId:
+            clonedInventory = currentState.inventories[PLAYER_ONE]
+            foeInventory = currentState.inventories[PLAYER_TWO]
+        else:
+            clonedInventory = currentState.inventories[PLAYER_TWO]
+            foeInventory = currentState.inventories[PLAYER_ONE]
+
         #check through all possible moves
+        #we predict it will move from start to end
+        #we predict it will move closer to tunnel ?
         if move.moveType == MOVE_ANT:
-            #we predict it will move from start to end
-            #we predict it will move closer to tunnel ?
-            nextMoveAnt = getAntAt(currentState, startPos)
-            nextMoveAnt.hasMoved = True
+            startPos = move.coordList[0]
+            finalPos = move.coordList[-1]
+
+            #update the coordinates of the ant to move
+            for ant in clonedInventory.ants:
+                if ant.coords == startPos:
+                    ant.coords = (finalPos[0], finalPos[1])
+                    ant.hasMoved = True
+
         elif move.moveType == BUILD:
+            startPos = move.coordList[0]
+            if move.buildType == TUNNEL:
+                #add new tunnel to inventory
+                clonedInventory.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
+                tunnel = Building(startPos, TUNNEL, self.playerId)
+                clonedInventory.constrs.append(tunnel)
+            else:
+                #add a new ant to our inventory
+                clonedInventory.foodCount -= UNIT_STATS[move.buildType][COST]
+                antToBuild = Ant(startPos, move.buildType, self.playerId)
+                clonedInventory.ants.append(antToBuild)
             #calc based on build,
             #predict to not build so not overbuilding
-            return #just added for so I can compile
+
+            for ant in clonedInventory.ants:
+                ant.hasMoved = True
 
         return currentState
 
