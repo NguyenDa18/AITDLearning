@@ -44,7 +44,7 @@ class AIPlayer(Player):
         # FIXED alpha value
         self.alpha = .01
 
-        # Name of file to save util states to (NOT USING CURRENTLY)
+        # Name of file to save utility states to (NOT USING CURRENTLY)
         self.fileName = "util.kaurn19_ nguyenda18"
 
 
@@ -111,19 +111,27 @@ class AIPlayer(Player):
     #
     #Return: List containing the consolidated state
     def consolidateState(self, currentState):
-        #Define player IDs
-        me = PLAYER_ONE
-        foe = PLAYER_TWO
-        if state.whoseTurn == PLAYER_TWO:
-            me = PLAYER_TWO
-            foe = PLAYER_ONE
+##        #Define player IDs
+##        me = PLAYER_ONE
+##        foe = PLAYER_TWO
+##        if state.whoseTurn == PLAYER_TWO:
+##            me = PLAYER_TWO
+##            foe = PLAYER_ONE
 
         #Init list to store the consolidated state data
         simpleState = []
 
         #Init references to player queens, inventory, and food
-        myInv = state.inventories[me]
-        foeInv = state.inventories[foe]
+        #myInv = state.inventories[me]
+        #foeInv = state.inventories[foe]
+        myInv = None
+        foeInv = None
+        if state.whoseTurn == self.playerId:
+            myInv = getCurrPlayerInventory(currentState)
+            foeInv = getEnemyInv(self,currentState)
+        else:
+            myInv = getEnemyInv(self,currentState)
+            foeInv = getCurrPlayerInventory(currentState)
 
         myQueen = myInv.getQueen()
         foeQueen = foeInv.getQueen()
@@ -143,7 +151,7 @@ class AIPlayer(Player):
         else:
             #save information about how much food we have, and if we are carrying
             food = len(myFood)
-            simpleState.append(['-.01', food])
+            simpleState.append(['-.01', myInv.foodCount])
 
             for ant in myInv.ants:
                 if ant.type == WORKER:
@@ -161,14 +169,20 @@ class AIPlayer(Player):
                                 targetFood = food
                         simpleState.append(['-.01', str(targetFood)])
 
+
+
         return simpleState
 
     ##
-    # rewardFunction
+    #reward
+    #Description: Calculates the reward based on the state. Returns a 1 if
+    #             the game has been won, a -1 if the game has been lost, and
+    #             -.01 for everything else.
     #
+    #Parameters:
+    #   currentState - The state of the current game
     #
-    # Returns: 1.0 = WON, -1.0 = LOST, -0.01 = ANYTHING ELSE
-    ##
+    #Return: The reward associated with the state
     def reward(self, simpleState):
         if '1' in simpleState:
             return 1.0
@@ -179,10 +193,15 @@ class AIPlayer(Player):
 
 
     ##
-    # flatten list method: we need to flatten our 2d list in order to use
-    # for calcuations
-    # credit: used code from online on stackoverflow
-    # NOT SURE IF HAD TO CONVERT TO STRING,
+    #flattenList
+    #Description: Takes a 2D list and turns it into a 1D list so we can use it
+    #             to make calculations.
+    #             NOTE: Used help from StackOverflow so code is similar
+    #
+    #Parameters:
+    #   theList - The list to flatten
+    #
+    #Return: The flattened list
     ##
     def flattenList(self, theList):
         flattenedList = []
@@ -193,33 +212,40 @@ class AIPlayer(Player):
         return flattenedList
 
     ##
-    # findUtil
-    # adds to the util list (self.stateList)
-    # make sure to set nextState to none because that is intializing first state
-    # NOT COMPLETE
+    #findUtil
+    #Description: Gets the next move from the Player.
+    #
+    #Parameters:
+    #   currentState - The current state in the game
+    #   nextState - The potential states that can occur based on our moves
+    #
+    #Return: The utilities of the states
     ##
     def findUtil(self, state, nextState = None):
-        #calc the util
+        #calc the utility
         currentList = self.consolidateState(state)
         flatCurrentList = self.flattenList(evalList)
 
-        #if first move then see if the state is in out list :
+        #if first move then see if the state is in out list:
         if nextState is None:
-            return
+            if flatCurrentList not in self.stateList:
+                self.stateList[flatCurrentList] = 0
         else:
             evalNextState = self.consolidateState(state)
             flatNextState = self.flattenList(evalNextState)
 
-            #if we have not seen, add to list, and set util to zero
-            #else calc the util
-
+            #if we have not seen, add to list, and set utility to zero. Else, we calculate the utility.
             if flatNextState not in self.stateList:
                 self.stateList[flatNextState] = 0
             else:
                 self.stateList[flatCurrentList] += (self.alpha *
                 (self.reward(flatCurrentList) + self.discountFactor*
                  self.stateList[flatNextState] - self.stateList[flatCurrentState]))
-        return #self.stateList[flatCurrentState)
+        return self.stateList[flatCurrentState]
+
+
+
+
 
 
     ##
@@ -228,18 +254,22 @@ class AIPlayer(Player):
     # (prediction) - USE OUR EVAL METHOD TO PREDICT WHAT MAY HAPPEN
     #
     #
-    #
+    ##
     def getNextState(self, currentState, move):
         currentState = currentState.fastclone()
-
         #check through all possible moves
         if move.moveType == MOVE_ANT:
             #we predict it will move from start to end
             #we predict it will move closer to tunnel ?
             nextMoveAnt = getAntAt(currentState, startPos)
             nextMoveAnt.hasMoved = True
+        elif move.moveType == BUILD:
+            #calc based on build,
+            #predict to not build so not overbuilding
+            return #just added for so I can compile
 
         return currentState
+
 
 
 
@@ -253,8 +283,24 @@ class AIPlayer(Player):
     #Return: The Move to be made
     ##
     def getMove(self, currentState):
+        #Calculate all the utilities for the states
+        self.findUtil(currentState)
+
+        #Initialize the best move as None and best utility as low number (anything lower than -1)
+        bestMove = None
+        bestUtil = -100
+
+        #Collect all the legal moves we can make
         moves = listAllLegalMoves(currentState)
-        return moves[random.randint(0,len(moves) - 1)]
+
+        #evaluate all the moves based on the utility and find best move from it
+        for move in moves:
+            nextState = getNextState(currentState, move)
+            util = self.findUtil(currentState, nextState)
+            if util > bestUtil:
+                bestUtil = util
+                bestMove = move
+        return bestMove
 
     ##
     #getAttack
@@ -268,16 +314,30 @@ class AIPlayer(Player):
     def getAttack(self, currentState, attackingAnt, enemyLocations):
         #Attack a random enemy.
         return enemyLocations[random.randint(0, len(enemyLocations) - 1)]
+
     ##
-    # saveFile - saves utils into a file
+    #registerWin
+    #Description: Tells the player if they won or not
     #
+    #Parameters:
+    #   hasWon - True if the player won the game. False if they lost (Boolean)
     #
+    def registerWin(self, hasWon):
+        #make sure to save the utilities to the file after each win
+        self.saveFile()
+    ##
+    #saveFile - saves utils into a file
+    #Description: Saves the utilities into a file
+    #
+    ##
     def saveFile(self):
         file = open(fileName, 'w+')
         json.dump(self.stateList, file)
     ##
-    # loadFile - loads the utils from the file
+    #loadFile - loads the utils from the file
+    #Description: Loads the file which contains the utilities
     #
+    ##
     def loadFile(self):
         file = open(fileName, 'r')
         json.load(file)
