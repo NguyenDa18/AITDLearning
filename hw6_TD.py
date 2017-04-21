@@ -1,5 +1,3 @@
-
-
 import random
 import json # to save and load into a file
 import sys
@@ -57,19 +55,11 @@ class AIPlayer(Player):
     #
     #Return: List containing the consolidated state
     def consolidateState(self, currentState):
-##        #Define player IDs
-##        me = PLAYER_ONE
-##        foe = PLAYER_TWO
-##        if state.whoseTurn == PLAYER_TWO:
-##            me = PLAYER_TWO
-##            foe = PLAYER_ONE
 
         #Init list to store the consolidated state data
         simpleState = []
 
         #Init references to player queens, inventory, and food
-        #myInv = state.inventories[me]
-        #foeInv = state.inventories[foe]
         myInv = None
         foeInv = None
         if currentState.whoseTurn == self.playerId:
@@ -91,9 +81,9 @@ class AIPlayer(Player):
 
         #if we won or lost, return True and the number to reward (similar to hasWon function)
         if foeQueen is None or myInv.foodCount >= 11 or len(foeInv.ants) <= 1:
-            simpleState.append(['1']) #idk if to add TRUE OR NOT
+            simpleState.append(['1'])
         elif myQueen is None or foeInv.foodCount <= 11 or len(myInv.ants) <= 1:
-            simpleState.append(['-1']) #same here
+            simpleState.append(['-1'])
         else:
             #save information about how much food we have, and if we are carrying
             food = len(myFood)
@@ -114,8 +104,6 @@ class AIPlayer(Player):
                             if approxDist(worker.coords, food.coords) < approxDist(worker.coords, targetFood.coords):
                                 targetFood = food
                         simpleState.append(['-.01', str(targetFood)])
-
-
 
         return simpleState
 
@@ -184,16 +172,17 @@ class AIPlayer(Player):
             if flatCurrentList not in self.stateList:
                 self.stateList[flatCurrentList] = 0
         else:
-            evalNextState = self.consolidateState(state)
+            evalNextState = self.consolidateState(nextState)
             flatNextState = self.flattenList(evalNextState)
 
             #if we have not seen, add to list, and set utility to zero. Else, we calculate the utility.
             if flatNextState not in self.stateList:
                 self.stateList[flatNextState] = 0
             else:
-                self.stateList[flatCurrentList] += (self.alpha *
-                (self.reward(flatCurrentList) + self.discountFactor*
+                self.stateList[flatCurrentList] += (self.alpha *\
+                (self.reward(flatCurrentList) + self.discountFactor* \
                  self.stateList[flatNextState] - self.stateList[flatCurrentList]))
+
         return self.stateList[flatCurrentList]
 
     ##
@@ -209,7 +198,6 @@ class AIPlayer(Player):
         #make a copy of the current state
         currentState = currentState.fastclone()
 
-
         #set the player inventories
         clonedInventory = None
         foeInventory = None
@@ -224,18 +212,42 @@ class AIPlayer(Player):
         #we predict it will move from start to end
         #we predict it will move closer to tunnel ?
         if move.moveType == MOVE_ANT:
+            #print "MOVES AVAILABLE: "
+            #print move.coordList
+            #print "\n"
             startPos = move.coordList[0]
+            #print "STARTING: "
+            #print startPos
+            #print "\n"
             finalPos = move.coordList[-1]
+            #print "FINAL: "
+            #print finalPos
+            #print "\n"
 
-            #update the coordinates of the ant to move
-            for ant in clonedInventory.ants:
-                if ant.coords == startPos:
-                    ant.coords = (finalPos[0], finalPos[1])
-                    ant.hasMoved = True
+            #take ant from start coord
+            antToMove = getAntAt(currentState, startPos)
+            #print "ANT TO MOVE COORDS: "
+            #print antToMove.coords
+            #print "\n"
+            #change ant's coords and hasMoved status
+            antToMove.coords = finalPos
+            #print "UPDATED ANT COORDS: "
+            #print antToMove.coords
+            #print "\n"
+            #print "-------------------------------------------\n"
+            antToMove.hasMoved = True
+
+            # #update the coordinates of the ant to move
+            # for ant in clonedInventory.ants:
+            #     if ant.coords == startPos:
+            #         ant.coords = (finalPos[0], finalPos[1])
+            #         ant.hasMoved = True
 
         #check if move is a build move
         elif move.moveType == BUILD:
             startPos = move.coordList[0]
+            clonedInventory = currentState.inventories[currentState.whoseTurn]
+
             if move.buildType == TUNNEL:
                 #add new tunnel to inventory
                 clonedInventory.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
@@ -249,11 +261,11 @@ class AIPlayer(Player):
             #calc based on build,
             #predict to not build so not overbuilding
 
-        for ant in clonedInventory.ants:
-            ant.hasMoved = True
+        # for ant in clonedInventory.ants:
+        #     ant.hasMoved = True
 
-        # # set whoseTurn to my turn
-        # currentState.whoseTurn = (nextState.whoseTurn + 1) % 2
+        # set whoseTurn to my turn
+        #currentState.whoseTurn = (currentState.whoseTurn + 1) % 2
 
         return currentState
 
@@ -311,7 +323,6 @@ class AIPlayer(Player):
         else:
             return [(0, 0)]
 
-
     ##
     #getMove
     #Description: Gets the next move from the Player.
@@ -334,12 +345,15 @@ class AIPlayer(Player):
 
         #evaluate all the moves based on the utility and find best move from it
         for move in moves:
-            #nextState = self.getNextState(currentState, move)
-            util = self.findUtil(currentState, self.getNextState(currentState, move))
+            nextState = self.getNextState(currentState, move)
+            util = -(self.findUtil(currentState, nextState))
+
             if util > bestUtil:
                 bestUtil = util
                 bestMove = move
+
         return bestMove
+
 
     ##
     #getAttack
