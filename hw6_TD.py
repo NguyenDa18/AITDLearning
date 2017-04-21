@@ -220,6 +220,7 @@ class AIPlayer(Player):
             #print startPos
             #print "\n"
             finalPos = move.coordList[-1]
+            print ("Hello")
             #print "FINAL: "
             #print finalPos
             #print "\n"
