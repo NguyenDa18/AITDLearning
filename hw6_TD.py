@@ -243,19 +243,17 @@ class AIPlayer(Player):
                  self.stateList[flatNextState] - self.stateList[flatCurrentState]))
         return self.stateList[flatCurrentState]
 
-
-
-
-
-
     ##
     # getNextState()
     #
-    # (prediction) - USE OUR EVAL METHOD TO PREDICT WHAT MAY HAPPEN
+    # Parameters:
+    #   currentState -The state of the current game
+    #   move -The Move action to be processed
     #
-    #
+    # Return: A GameState object that represents the prediction of the next state after a move has been made
     ##
     def getNextState(self, currentState, move):
+        #make a copy of the current state
         currentState = currentState.fastclone()
 
         clonedInventory = None
@@ -282,6 +280,7 @@ class AIPlayer(Player):
                     ant.coords = (finalPos[0], finalPos[1])
                     ant.hasMoved = True
 
+        #check if move is a build move
         elif move.moveType == BUILD:
             startPos = move.coordList[0]
             if move.buildType == TUNNEL:
@@ -297,12 +296,13 @@ class AIPlayer(Player):
             #calc based on build,
             #predict to not build so not overbuilding
 
-            for ant in clonedInventory.ants:
-                ant.hasMoved = True
+        for ant in clonedInventory.ants:
+            ant.hasMoved = True
+
+        # set whoseTurn to my turn
+        currentState.whoseTurn = (nextState.whoseTurn + 1) % 2
 
         return currentState
-
-
 
 
     ##
@@ -358,7 +358,7 @@ class AIPlayer(Player):
         #make sure to save the utilities to the file after each win
         self.saveFile()
     ##
-    #saveFile - saves utils into a file
+    #saveFile
     #Description: Saves the utilities into a file
     #
     ##
@@ -366,7 +366,7 @@ class AIPlayer(Player):
         file = open(fileName, 'w+')
         json.dump(self.stateList, file)
     ##
-    #loadFile - loads the utils from the file
+    #loadFile
     #Description: Loads the file which contains the utilities
     #
     ##
