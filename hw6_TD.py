@@ -1,4 +1,4 @@
-__author__ = "Danh Nguyen and Navreen Kaur"
+
 
 import random
 import json # to save and load into a file
@@ -30,8 +30,9 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer,self).__init__(inputPlayerId, "Don Giva Nux")
+        super(AIPlayer,self).__init__(inputPlayerId, "Don Giva Nux Current")
 
+        self.flattendList = []
         #A list of utility states
         self.stateList = {}
 
@@ -46,61 +47,6 @@ class AIPlayer(Player):
 
         # Name of file to save utility states to (NOT USING CURRENTLY)
         self.fileName = "util.kaurn19_ nguyenda18"
-
-
-    ##
-    #getPlacement
-    #
-    #Description: called during setup phase for each Construction that
-    #   must be placed by the player.  These items are: 1 Anthill on
-    #   the player's side; 1 tunnel on player's side; 9 grass on the
-    #   player's side; and 2 food on the enemy's side.
-    #
-    #Parameters:
-    #   construction - the Construction to be placed.
-    #   currentState - the state of the game at this point in time.
-    #
-    #Return: The coordinates of where the construction is to be placed
-    ##
-    def getPlacement(self, currentState):
-        numToPlace = 0
-        #implemented by students to return their next move
-        if currentState.phase == SETUP_PHASE_1:    #stuff on my side
-            numToPlace = 11
-            moves = []
-            for i in range(0, numToPlace):
-                move = None
-                while move == None:
-                    #Choose any x location
-                    x = random.randint(0, 9)
-                    #Choose any y location on your side of the board
-                    y = random.randint(0, 3)
-                    #Set the move if this space is empty
-                    if currentState.board[x][y].constr == None and (x, y) not in moves:
-                        move = (x, y)
-                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
-                        currentState.board[x][y].constr == True
-                moves.append(move)
-            return moves
-        elif currentState.phase == SETUP_PHASE_2:   #stuff on foe's side
-            numToPlace = 2
-            moves = []
-            for i in range(0, numToPlace):
-                move = None
-                while move == None:
-                    #Choose any x location
-                    x = random.randint(0, 9)
-                    #Choose any y location on enemy side of the board
-                    y = random.randint(6, 9)
-                    #Set the move if this space is empty
-                    if currentState.board[x][y].constr == None and (x, y) not in moves:
-                        move = (x, y)
-                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
-                        currentState.board[x][y].constr == True
-                moves.append(move)
-            return moves
-        else:
-            return [(0, 0)]
 
     ##
     #consolidateState
@@ -126,7 +72,7 @@ class AIPlayer(Player):
         #foeInv = state.inventories[foe]
         myInv = None
         foeInv = None
-        if state.whoseTurn == self.playerId:
+        if currentState.whoseTurn == self.playerId:
             myInv = getCurrPlayerInventory(currentState)
             foeInv = getEnemyInv(self,currentState)
         else:
@@ -137,14 +83,14 @@ class AIPlayer(Player):
         foeQueen = foeInv.getQueen()
 
         # Get our food
-        foodList = getConstrList(state, None, (FOOD,))
+        foodList = getConstrList(currentState, None, (FOOD,))
         myFood = []
         for food in foodList:
             if food.coords[1] < 4:
                 myFood.append(food)
 
         #if we won or lost, return True and the number to reward (similar to hasWon function)
-        if foeQueen is None or myInv.foodCount >= 11 or len(oppInv.ants) <= 1:
+        if foeQueen is None or myInv.foodCount >= 11 or len(foeInv.ants) <= 1:
             simpleState.append(['1']) #idk if to add TRUE OR NOT
         elif myQueen is None or foeInv.foodCount <= 11 or len(myInv.ants) <= 1:
             simpleState.append(['-1']) #same here
@@ -204,12 +150,19 @@ class AIPlayer(Player):
     #Return: The flattened list
     ##
     def flattenList(self, theList):
-        flattenedList = []
+        #self.flattenedList = []
+
+        outString = ""
 
         for list in theList:
-            for value in list:
-                flattendList.append(val)
-        return flattenedList
+            for item in list:
+                outString += str(item)
+
+        return outString
+##        for list in theList:
+##            for value in list:
+##                self.flattendList.append(value)
+##        return self.flattenedList
 
     ##
     #findUtil
@@ -224,7 +177,7 @@ class AIPlayer(Player):
     def findUtil(self, state, nextState = None):
         #calc the utility
         currentList = self.consolidateState(state)
-        flatCurrentList = self.flattenList(evalList)
+        flatCurrentList = self.flattenList(currentList)
 
         #if first move then see if the state is in out list:
         if nextState is None:
@@ -240,8 +193,8 @@ class AIPlayer(Player):
             else:
                 self.stateList[flatCurrentList] += (self.alpha *
                 (self.reward(flatCurrentList) + self.discountFactor*
-                 self.stateList[flatNextState] - self.stateList[flatCurrentState]))
-        return self.stateList[flatCurrentState]
+                 self.stateList[flatNextState] - self.stateList[flatCurrentList]))
+        return self.stateList[flatCurrentList]
 
     ##
     # getNextState()
@@ -256,16 +209,16 @@ class AIPlayer(Player):
         #make a copy of the current state
         currentState = currentState.fastclone()
 
-        clonedInventory = None
-        foeInventory = None
 
         #set the player inventories
-        if currentState.inventories[PLAYER_ONE].playerId == self.playerId:
-            clonedInventory = currentState.inventories[PLAYER_ONE]
-            foeInventory = currentState.inventories[PLAYER_TWO]
+        clonedInventory = None
+        foeInventory = None
+        if currentState.whoseTurn == self.playerId:
+            clonedInventory = getCurrPlayerInventory(currentState)
+            foeInventory = getEnemyInv(self,currentState)
         else:
-            clonedInventory = currentState.inventories[PLAYER_TWO]
-            foeInventory = currentState.inventories[PLAYER_ONE]
+            clonedInventory = getEnemyInv(self,currentState)
+            foeInventory = getCurrPlayerInventory(currentState)
 
         #check through all possible moves
         #we predict it will move from start to end
@@ -299,10 +252,64 @@ class AIPlayer(Player):
         for ant in clonedInventory.ants:
             ant.hasMoved = True
 
-        # set whoseTurn to my turn
-        currentState.whoseTurn = (nextState.whoseTurn + 1) % 2
+        # # set whoseTurn to my turn
+        # currentState.whoseTurn = (nextState.whoseTurn + 1) % 2
 
         return currentState
+
+    ##
+    #getPlacement
+    #
+    #Description: called during setup phase for each Construction that
+    #   must be placed by the player.  These items are: 1 Anthill on
+    #   the player's side; 1 tunnel on player's side; 9 grass on the
+    #   player's side; and 2 food on the enemy's side.
+    #
+    #Parameters:
+    #   construction - the Construction to be placed.
+    #   currentState - the state of the game at this point in time.
+    #
+    #Return: The coordinates of where the construction is to be placed
+    ##
+    def getPlacement(self, currentState):
+        numToPlace = 0
+        #implemented by students to return their next move
+        if currentState.phase == SETUP_PHASE_1:    #stuff on my side
+            numToPlace = 11
+            moves = []
+            for i in range(0, numToPlace):
+                move = None
+                while move == None:
+                    #Choose any x location
+                    x = random.randint(0, 9)
+                    #Choose any y location on your side of the board
+                    y = random.randint(0, 3)
+                    #Set the move if this space is empty
+                    if currentState.board[x][y].constr == None and (x, y) not in moves:
+                        move = (x, y)
+                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
+                        currentState.board[x][y].constr == True
+                moves.append(move)
+            return moves
+        elif currentState.phase == SETUP_PHASE_2:   #stuff on foe's side
+            numToPlace = 2
+            moves = []
+            for i in range(0, numToPlace):
+                move = None
+                while move == None:
+                    #Choose any x location
+                    x = random.randint(0, 9)
+                    #Choose any y location on enemy side of the board
+                    y = random.randint(6, 9)
+                    #Set the move if this space is empty
+                    if currentState.board[x][y].constr == None and (x, y) not in moves:
+                        move = (x, y)
+                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
+                        currentState.board[x][y].constr == True
+                moves.append(move)
+            return moves
+        else:
+            return [(0, 0)]
 
 
     ##
@@ -327,8 +334,8 @@ class AIPlayer(Player):
 
         #evaluate all the moves based on the utility and find best move from it
         for move in moves:
-            nextState = getNextState(currentState, move)
-            util = self.findUtil(currentState, nextState)
+            #nextState = self.getNextState(currentState, move)
+            util = self.findUtil(currentState, self.getNextState(currentState, move))
             if util > bestUtil:
                 bestUtil = util
                 bestMove = move
@@ -363,7 +370,7 @@ class AIPlayer(Player):
     #
     ##
     def saveFile(self):
-        file = open(fileName, 'w+')
+        file = open(self.fileName, 'w+')
         json.dump(self.stateList, file)
     ##
     #loadFile
@@ -371,5 +378,5 @@ class AIPlayer(Player):
     #
     ##
     def loadFile(self):
-        file = open(fileName, 'r')
+        file = open(self.fileName, 'r')
         json.load(file)
