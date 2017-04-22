@@ -276,6 +276,27 @@ class AIPlayer(Player):
                 antToBuild = Ant(startPos, move.buildType, self.playerId)
                 antToBuild.hasMoved = True
                 clonedInventory.ants.append(antToBuild)
+        elif move.moveType == END:
+            for ant in clonedInventory.ants:
+                constrUnderAnt = getConstrAt(currentState, ant.coords)
+                if constrUnderAnt is not None:
+                    #if constr is foe's and ant hasn't moved affect capture health of constructs
+                    if type(constrUnderAnt) is Building and not ant.hasMoved and not constrUnderAnt.player == currentState.whoseTurn:
+                        constrUnderAnt.captureHealth -= 1
+                        if constrUnderAnt == 0 and constrUnderAnt.type != ANTHILL:
+                            constrUnderAnt.player = currentState.whoseTurn
+                            constrUnderAnt.captureHealth = CONSTR_STATS[constrUnderAnt.type][CAP_HEALTH]
+                        #have all workers over food gathering the food
+                        elif constrUnderAnt.type == FOOD and ant.type == WORKER:
+                            ant.carrying = True
+                        #deposit all carrying food
+                    elif (constrUnderAnt.type == ANTHILL or constrUnderAnt.type == TUNNEL) and ant.carrying:
+                        clonedInventory.foodCount += 1
+                        ant.carrying = False
+
+            #reset hasMoved for all ants
+            ant.hasMoved = False
+
             #calc based on build,
             #predict to not build so not overbuilding
 
@@ -296,44 +317,52 @@ class AIPlayer(Player):
     #Return: The coordinates of where the construction is to be placed
     ##
     def getPlacement(self, currentState):
-        numToPlace = 0
-        #implemented by students to return their next move
-        if currentState.phase == SETUP_PHASE_1:    #stuff on my side
-            numToPlace = 11
-            moves = []
-            for i in range(0, numToPlace):
-                move = None
-                while move == None:
-                    #Choose any x location
-                    x = random.randint(0, 9)
-                    #Choose any y location on your side of the board
-                    y = random.randint(0, 3)
-                    #Set the move if this space is empty
-                    if currentState.board[x][y].constr == None and (x, y) not in moves:
-                        move = (x, y)
-                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
-                        currentState.board[x][y].constr == True
-                moves.append(move)
-            return moves
-        elif currentState.phase == SETUP_PHASE_2:   #stuff on foe's side
-            numToPlace = 2
-            moves = []
-            for i in range(0, numToPlace):
-                move = None
-                while move == None:
-                    #Choose any x location
-                    x = random.randint(0, 9)
-                    #Choose any y location on enemy side of the board
-                    y = random.randint(6, 9)
-                    #Set the move if this space is empty
-                    if currentState.board[x][y].constr == None and (x, y) not in moves:
-                        move = (x, y)
-                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
-                        currentState.board[x][y].constr == True
-                moves.append(move)
+        self.myFood = None
+        self.myTunnel = None
+
+        #Depending on my place in the board save my foe's anthill
+        #or tunnel positions
+        if (self.playerId == 1):
+              foePlayerTunnel = getConstrList(currentState, 0, (TUNNEL,))
+              foePlayerHill = getConstrList(currentState, 0, (ANTHILL,))
+
+        elif (self.playerId == 0):
+              foePlayerTunnel = getConstrList(currentState, 1, (TUNNEL,))
+              foePlayerHill = getConstrList(currentState, 1, (ANTHILL,))
+
+        if currentState.phase == SETUP_PHASE_1:
+              return [(2,1), (7,1),
+                      (0,1), (1,0), (2,0), (3,0), \
+                      (9,0), (9,1), (7,0), (8,0), (9,0)]
+        elif currentState.phase == SETUP_PHASE_2:
+              moves = []
+              for i in range(0,2):
+                  move = None
+                  while move == None:
+                      #Choose any x location
+                      x = random.randint(0, 9)
+                      #Choose any y location on enemy side of the board
+                      y = random.randint(6, 9)
+
+                      #Set the move if this space is empty and if the move is
+                      #going to take multiple turns to reach the food
+                      if currentState.board[x][y].constr == None and (x, y) not in moves and \
+                      stepsToReach(currentState, foePlayerTunnel[0].coords, (x,y)) > 4 and \
+                      stepsToReach(currentState, foePlayerHill[0].coords, (x,y)) > 4:
+                          move = (x, y)
+                          #Just need to make the space non-empty.
+                          currentState.board[x][y].constr == True
+
+                      #if a calculated food placement cannot be found randomly place
+                      #the food (resolves game crashes against Random)
+                      elif currentState.board[x][y].constr == None and (x, y) not in moves:
+                          move = (x,y)
+                          currentState.board[x][y].constr == True
+                  moves.append(move)
             return moves
         else:
-            return [(0, 0)]
+            return None  #should never happen
+
 
     ##
     #getMove
@@ -398,6 +427,7 @@ class AIPlayer(Player):
     def saveFile(self):
         file = open(self.fileName, 'w+')
         json.dump(self.stateList, file)
+        file.close()
     ##
     #loadFile
     #Description: Loads the file which contains the utilities
@@ -406,3 +436,4 @@ class AIPlayer(Player):
     def loadFile(self):
         file = open(self.fileName, 'r')
         json.load(file)
+        file.close()
