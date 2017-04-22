@@ -118,7 +118,6 @@ class AIPlayer(Player):
             me = PLAYER_TWO
             foe = PLAYER_ONE
 
-
         #record the food and construct locations
         myTunnel = getConstrList(currentState, me, (TUNNEL,))[0]
         myHill = myInv.getAnthill()
@@ -158,21 +157,23 @@ class AIPlayer(Player):
             for ant in myInv.ants:
                 if ant.type == WORKER:
                     if ant.carrying:
-                        #return if should go to tunnel or anthill
+                        #return if should go to tunnel or anthill depending on which is closer
                         targetConstr = myTunnel
-                        if approxDist(worker.coords, myTunnel.coords) > approxDist(worker.coords, myAnthill.coords):
-                            targetConstr = myAnthill
+                        if stepsToReach(currentState, worker.coords, myHill.coords) < stepsToReach(currentState, worker.coords, myTunnel.coords):
+                            targetConstr = myHill
                         simpleState.append(['-.01', str(targetConstr)])
+                        elif stepsToReach(currentState, worker.coords, myHill.coords) > stepsToReach(currentState, worker.coords, myTunnel.coords):
+                            targetConstr = myTunnel
                     else:
                         # Go to whichever food is closest
                         targetFood = foodList[0]
                         for food in foodList:
-                            # if approxDist(worker.coords, food.coords) < approxDist(worker.coords, targetFood.coords):
-                            #     targetFood = food
+                            distToTunnel = stepsToReach(currentState, myTunnel, food.coords)
+                            distToHill = stepsToReach(currentState, myHill, food.coords)
+
 
                             if (stepsToReach(currentState, worker.coords, food.coords) < stepsToReach(currentState, worker.coords, targetFood.coords)):
                                 targetFood = food
-
 
 
                         simpleState.append(['-.01', str(targetFood)])
@@ -235,7 +236,7 @@ class AIPlayer(Player):
                 self.stateList[flatCurrentList] += (self.alpha *
                 (self.reward(flatCurrentList) + self.discountFactor*
                  self.stateList[flatNextState] - self.stateList[flatCurrentState]))
-        return #self.stateList[flatCurrentState)
+        return self.stateList[flatCurrentState]
 
 
     ##
