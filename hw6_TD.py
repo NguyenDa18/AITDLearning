@@ -247,15 +247,53 @@ class AIPlayer(Player):
     #
     #
     def getNextState(self, currentState, move):
-        currentState = currentState.fastclone()
+         #set the player inventories
+          clonedInventory = None
+          foeInventory = None
+         if currentState.whoseTurn == self.playerId:
+             clonedInventory = getCurrPlayerInventory(currentState)
+             foeInventory = getEnemyInv(self,currentState)
+         else:
+             clonedInventory = getEnemyInv(self,currentState)
+             foeInventory = getCurrPlayerInventory(currentState)
 
-        #check through all possible moves
-        if move.moveType == MOVE_ANT:
-            #we predict it will move from start to end
-            #we predict it will move closer to tunnel ?
-            nextMoveAnt = getAntAt(currentState, startPos)
-            nextMoveAnt.hasMoved = True
+         #check through all possible moves
+          #we predict it will move from start to end
+          #we predict it will move closer to tunnel ?
+          if move.moveType == MOVE_ANT:
+              startPos = move.coordList[0]
+             #print "STARTING: "
+              finalPos = move.coordList[-1]
 
+             #update the coordinates of the ant to move
+            for ant in clonedInventory.ants:
+                 if ant.coords == startPos:
+                     ant.coords = (finalPos[0], finalPos[1])
+                     ant.hasMoved = True
+
+             #take ant from start coord
+            antToMove = getAntAt(currentState, startPos)
+           antToMove.coords = finalPos
+
+            antToMove.hasMoved = True
+          #check if move is a build move
+          elif move.moveType == BUILD:
+              startPos = move.coordList[0]
+             clonedInventory = currentState.inventories[currentState.whoseTurn]
+
+              if move.buildType == TUNNEL:
+                  #add new tunnel to inventory
+                  clonedInventory.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
+              #calc based on build,
+              #predict to not build so not overbuilding
+
+
+         for ant in clonedInventory.ants:
+             ant.hasMoved = True
+
+
+         # set whoseTurn to my turn
+         currentState.whoseTurn = (currentState.whoseTurn + 1) % 2
         return currentState
 
 
@@ -270,8 +308,28 @@ class AIPlayer(Player):
     #Return: The Move to be made
     ##
     def getMove(self, currentState):
+        #Calculate all the utilities for the states
+        self.findUtil(currentState)
+
+        #Initialize the best move as None and best utility as low number (anything lower than -1)
+        bestMove = None
+        bestUtil = -100
+
+        #Collect all the legal moves we can make
         moves = listAllLegalMoves(currentState)
-        return moves[random.randint(0,len(moves) - 1)]
+
+        if len(moves) == 1:
+            bestMove = moves[0]
+
+        #evaluate all the moves based on the utility and find best move from it
+        for move in moves:
+            nextState = self.getNextState(currentState, move)
+            util = -(self.findUtil(currentState, nextState))
+            if util > bestUtil:
+                bestUtil = util
+                bestMove = move
+        return bestMove
+
 
     ##
     #getAttack
@@ -285,6 +343,18 @@ class AIPlayer(Player):
     def getAttack(self, currentState, attackingAnt, enemyLocations):
         #Attack a random enemy.
         return enemyLocations[random.randint(0, len(enemyLocations) - 1)]
+
+    ##
+    #registerWin
+    #Description: Tells the player if they won or not
+    #
+    #Parameters:
+    #   hasWon - True if the player won the game. False if they lost (Boolean)
+    #
+    def registerWin(self, hasWon):
+        #make sure to save the utilities to the file after each win
+        self.saveFile()
+
     ##
     # saveFile - saves utils into a file
     #
