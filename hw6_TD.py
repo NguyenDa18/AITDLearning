@@ -1,5 +1,3 @@
-__author__ = "Danh Nguyen and Navreen Kaur"
-
 import random
 import json # to save and load into a file
 import sys
@@ -30,7 +28,9 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer,self).__init__(inputPlayerId, "Don Giva Nux")
+        super(AIPlayer,self).__init__(inputPlayerId, "NEWWW")
+
+        self.flattendList = []
 
         #A list of utility states
         self.stateList = {}
@@ -41,12 +41,245 @@ class AIPlayer(Player):
         # Discount Factor (Lambda)
         self.discountFactor = .8
 
-        # FIXED alpha value
+        # FIXED alpha learning rate value
         self.alpha = .01
 
-        # Name of file to save util states to (NOT USING CURRENTLY)
+        # Name of file to save utility states to (NOT USING CURRENTLY)
         self.fileName = "util.kaurn19_ nguyenda18"
 
+    ##
+    #consolidateState
+    #Description: Given state, compress most significant info into a simple state
+    #
+    #Parameters:
+    #   currentState - the state the game is in
+    #
+    #Return: The consolidated game state
+    def consolidateState(self, currentState):
+        me = currentState.whoseTurn
+
+        #Init list to store the consolidated state data
+        simpleState = []
+
+        #Init references to player queens, inventory, and food
+        myInv = None
+        foeInv = None
+        if currentState.whoseTurn == self.playerId:
+            myInv = getCurrPlayerInventory(currentState)
+            foeInv = getEnemyInv(self,currentState)
+        else:
+            myInv = getEnemyInv(self,currentState)
+            foeInv = getCurrPlayerInventory(currentState)
+
+        #record queen locations
+        myQueen = myInv.getQueen()
+        foeQueen = foeInv.getQueen()
+
+
+        #record the construct locations
+        myTunnel = getConstrList(currentState, self.playerId, (TUNNEL,))[0]
+
+        myHill = myInv.getAnthill()
+
+        #Ant lists
+        myWorkers = getAntList(currentState, self.playerId, (WORKER,))
+        myDrones = getAntList(currentState, self.playerId, (DRONE,))
+
+        # Get our food
+        foodList = getConstrList(currentState, None, (FOOD,))
+        myFood = []
+        for food in foodList:
+            if food.coords[1] < 4:
+                myFood.append(food)
+
+        #if we won or lost, return True and the number to reward (similar to hasWon function)
+        if foeQueen is None or myInv.foodCount >= 11 or len(foeInv.ants) <= 1:
+            simpleState.append(['1'])
+        elif myQueen is None or foeInv.foodCount <= 11 or len(myInv.ants) <= 1:
+            simpleState.append(['-1'])
+        else:
+            #save information about how much food we have, and if we are carrying
+            food = len(myFood)
+            simpleState.append(['-.01', myInv.foodCount])
+
+            for ant in myInv.ants:
+                if ant.type == WORKER:
+                    if ant.carrying:
+                        #return if should go to tunnel or anthill
+                        targetConstr = myTunnel
+                        if stepsToReach(currentState, worker.coords, myHill.coords) < stepsToReach(currentState, worker.coords, myTunnel.coords):
+                            targetConstr = myHill
+                        else:
+                            targetConstr = myTunnel
+                        simpleState.append(['-.01', str(targetConstr)])
+                    else:
+                        # Go the whichever food is closest
+                        targetFood = foodList[0]
+                        for food in foodList:
+                            distToTunnel = stepsToReach(currentState, myTunnel, food.coords)
+                            distToHill = stepsToReach(currentState, myHill, food.coords)
+
+                            if stepsToReach(currentState, worker.coords, food.coords) < stepsToReach(currentState, worker.coords, targetFood.coords):
+                                targetFood = food
+                        simpleState.append(['-.01', str(targetFood)])
+
+        return simpleState
+
+    ##
+    #totalAntHealth
+    #Description: Finds the value of a player's total ant health
+    #
+    #Parameters:
+    #   currentState -the current state the game is in
+    #   playerId -which player we are calculating
+    #
+    #Return: total ant health of a player
+    ##
+    def totalAntHealth(self, currentState, playerId):
+        antHealth = 0
+        for ant in state.inventories[playerId].ants:
+            antHealth += ant.health
+        return antHealth
+
+    ##
+    #reward
+    #Description: Calculates the reward based on the state. Returns a 1 if
+    #             the game has been won, a -1 if the game has been lost, and
+    #             -.01 for everything else.
+    #
+    #Parameters:
+    #   currentState - The state of the current game
+    #
+    #Return: The reward associated with the state
+    def reward(self, simpleState):
+        if '1' in simpleState:
+            return 1.0
+        elif '-1' in simpleState:
+            return -1.0
+        else:
+            return -0.01
+
+
+    ##
+    #flattenList
+    #Description: Takes a 2D list and turns it into a 1D list so we can use it
+    #             to make calculations.
+    #             NOTE: Used help from StackOverflow so code is similar
+    #
+    #Parameters:
+    #   theList - The list to flatten
+    #
+    #Return: The flattened list
+    ##
+    def flattenList(self, theList):
+        #self.flattenedList = []
+
+        outString = ""
+
+        for list in theList:
+            for item in list:
+                outString += str(item)
+
+        return outString
+##        for list in theList:
+##            for value in list:
+##                self.flattendList.append(value)
+##        return self.flattenedList
+
+    ##
+    #findUtil
+    #Description: Gets the next move from the Player.
+    #
+    #Parameters:
+    #   currentState - The current state in the game
+    #   nextState - The potential states that can occur based on our moves
+    #
+    #Return: The utilities of the states
+    ##
+    def findUtil(self, state, nextState = None):
+        #calc the utility
+        currentList = self.consolidateState(state)
+        flatCurrentList = self.flattenList(currentList)
+
+        #if first move then see if the state is in out list:
+        if nextState is None:
+            if flatCurrentList not in self.stateList:
+                self.stateList[flatCurrentList] = 0
+        else:
+            evalNextState = self.consolidateState(nextState)
+            flatNextState = self.flattenList(evalNextState)
+
+            #if we have not seen, add to list, and set utility to zero. Else, we calculate the utility.
+            if flatNextState not in self.stateList:
+                self.stateList[flatNextState] = 0
+            else:
+                self.stateList[flatCurrentList] += (self.alpha *\
+                (self.reward(flatCurrentList) + self.discountFactor* \
+                 self.stateList[flatNextState] - self.stateList[flatCurrentList]))
+
+        return self.stateList[flatCurrentList]
+
+    ##
+    # getNextState()
+    #
+    # Parameters:
+    #   currentState -The state of the current game
+    #   move -The Move action to be processed
+    #
+    # Return: A GameState object that represents the prediction of the next state after a move has been made
+    ##
+    def getNextState(self, currentState, move):
+        #make a copy of the current state
+        currentState = currentState.fastclone()
+
+        #set the player inventories
+        clonedInventory = None
+        foeInventory = None
+        if currentState.whoseTurn == self.playerId:
+            clonedInventory = getCurrPlayerInventory(currentState)
+            foeInventory = getEnemyInv(self,currentState)
+        else:
+            clonedInventory = getEnemyInv(self,currentState)
+            foeInventory = getCurrPlayerInventory(currentState)
+
+        #check through all possible moves
+        #we predict it will move from start to end
+        #we predict it will move closer to tunnel ?
+        if move.moveType == MOVE_ANT:
+            startPos = move.coordList[0]
+            finalPos = move.coordList[-1]
+
+            #take ant from start coord
+            antToMove = getAntAt(currentState, startPos)
+
+            #if ant is null, return
+            if antToMove is None:
+                return currentState
+
+            #change the ant's coords and hasMoved status
+            antToMove.coords = finalPos
+            antToMove.hasMoved = True
+
+        #check if move is a build move
+        elif move.moveType == BUILD:
+            startPos = move.coordList[0]
+            clonedInventory = currentState.inventories[currentState.whoseTurn]
+
+            if move.buildType == TUNNEL:
+                #add new tunnel to inventory
+                clonedInventory.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
+                tunnel = Building(startPos, TUNNEL, self.playerId)
+                clonedInventory.constrs.append(tunnel)
+            else:
+                #add a new ant to our inventory
+                clonedInventory.foodCount -= UNIT_STATS[move.buildType][COST]
+                antToBuild = Ant(startPos, move.buildType, self.playerId)
+                antToBuild.hasMoved = True
+                clonedInventory.ants.append(antToBuild)
+            #calc based on build,
+            #predict to not build so not overbuilding
+
+        return currentState
 
     ##
     #getPlacement
@@ -103,202 +336,6 @@ class AIPlayer(Player):
             return [(0, 0)]
 
     ##
-    #consolidateState
-    #Description: Given state, compress most significant info into a few states
-    #
-    #Parameters:
-    #   currentState - the state the game is in
-    #
-    #Return: List containing the consolidated state
-    def consolidateState(self, currentState):
-        #Define player IDs
-        me = PLAYER_ONE
-        foe = PLAYER_TWO
-        if currentState.whoseTurn == PLAYER_TWO:
-            me = PLAYER_TWO
-            foe = PLAYER_ONE
-
-        #record the food and construct locations
-        myTunnel = getConstrList(currentState, me, (TUNNEL,))[0]
-        myHill = myInv.getAnthill()
-
-        #Ant lists
-        myWorkers = getAntList(currentState, me, (WORKER,))
-        myDrones = getAntList(currentState, me, (DRONE,))
-
-
-        #Init list to store the consolidated state data
-        simpleState = []
-
-        #Init references to player queens, inventory, and food
-        myInv = state.inventories[me]
-        foeInv = state.inventories[foe]
-
-        myQueen = myInv.getQueen()
-        foeQueen = foeInv.getQueen()
-
-        # Get our food
-        foodList = getConstrList(state, None, (FOOD,))
-        myFood = []
-        for food in foodList:
-            if food.coords[1] < 4:
-                myFood.append(food)
-
-        #if we won or lost, return True and the number to reward (similar to hasWon function)
-        if foeQueen is None or myInv.foodCount >= 11 or len(foeInv.ants) <= 1:
-            simpleState.append(['1']) #idk if to add TRUE OR NOT
-        elif myQueen is None or foeInv.foodCount <= 11 or len(myInv.ants) <= 1:
-            simpleState.append(['-1']) #same here
-        else:
-            #save information about how much food we have, and if we are carrying
-            food = len(myFood)
-            simpleState.append(['-.01', food])
-
-            for ant in myInv.ants:
-                if ant.type == WORKER:
-                    if ant.carrying:
-                        #return if should go to tunnel or anthill depending on which is closer
-                        targetConstr = myTunnel
-                        if stepsToReach(currentState, worker.coords, myHill.coords) < stepsToReach(currentState, worker.coords, myTunnel.coords):
-                            targetConstr = myHill
-                        simpleState.append(['-.01', str(targetConstr)])
-                        elif stepsToReach(currentState, worker.coords, myHill.coords) > stepsToReach(currentState, worker.coords, myTunnel.coords):
-                            targetConstr = myTunnel
-                    else:
-                        # Go to whichever food is closest
-                        targetFood = foodList[0]
-                        for food in foodList:
-                            distToTunnel = stepsToReach(currentState, myTunnel, food.coords)
-                            distToHill = stepsToReach(currentState, myHill, food.coords)
-
-
-                            if (stepsToReach(currentState, worker.coords, food.coords) < stepsToReach(currentState, worker.coords, targetFood.coords)):
-                                targetFood = food
-
-
-                        simpleState.append(['-.01', str(targetFood)])
-
-        return simpleState
-
-    ##
-    # rewardFunction
-    #
-    #
-    # Returns: 1.0 = WON, -1.0 = LOST, -0.01 = ANYTHING ELSE
-    ##
-    def reward(self, simpleState):
-        if '1' in simpleState:
-            return 1.0
-        elif '-1' in simpleState:
-            return -1.0
-        else:
-            return -0.01
-
-
-    ##
-    # flatten list method: we need to flatten our 2d list in order to use
-    # for calcuations
-    # credit: used code from online on stackoverflow
-    # NOT SURE IF HAD TO CONVERT TO STRING,
-    ##
-    def flattenList(self, theList):
-        flattenedList = []
-
-        for list in theList:
-            for value in list:
-                flattendList.append(val)
-        return flattenedList
-
-    ##
-    # findUtil
-    # adds to the util list (self.stateList)
-    # make sure to set nextState to none because that is intializing first state
-    # NOT COMPLETE
-    ##
-    def findUtil(self, state, nextState = None):
-        #calc the util
-        currentList = self.consolidateState(state)
-        flatCurrentList = self.flattenList(evalList)
-
-        #if first move then see if the state is in out list :
-        if nextState is None:
-            return
-        else:
-            evalNextState = self.consolidateState(state)
-            flatNextState = self.flattenList(evalNextState)
-
-            #if we have not seen, add to list, and set util to zero
-            #else calc the util
-
-            if flatNextState not in self.stateList:
-                self.stateList[flatNextState] = 0
-            else:
-                self.stateList[flatCurrentList] += (self.alpha *
-                (self.reward(flatCurrentList) + self.discountFactor*
-                 self.stateList[flatNextState] - self.stateList[flatCurrentState]))
-        return self.stateList[flatCurrentState]
-
-
-    ##
-    # getNextState()
-    #
-    # (prediction) - USE OUR EVAL METHOD TO PREDICT WHAT MAY HAPPEN
-    #
-    #
-    #
-    def getNextState(self, currentState, move):
-         #set the player inventories
-          clonedInventory = None
-          foeInventory = None
-         if currentState.whoseTurn == self.playerId:
-             clonedInventory = getCurrPlayerInventory(currentState)
-             foeInventory = getEnemyInv(self,currentState)
-         else:
-             clonedInventory = getEnemyInv(self,currentState)
-             foeInventory = getCurrPlayerInventory(currentState)
-
-         #check through all possible moves
-          #we predict it will move from start to end
-          #we predict it will move closer to tunnel ?
-          if move.moveType == MOVE_ANT:
-              startPos = move.coordList[0]
-             #print "STARTING: "
-              finalPos = move.coordList[-1]
-
-             #update the coordinates of the ant to move
-            for ant in clonedInventory.ants:
-                 if ant.coords == startPos:
-                     ant.coords = (finalPos[0], finalPos[1])
-                     ant.hasMoved = True
-
-             #take ant from start coord
-            antToMove = getAntAt(currentState, startPos)
-           antToMove.coords = finalPos
-
-            antToMove.hasMoved = True
-          #check if move is a build move
-          elif move.moveType == BUILD:
-              startPos = move.coordList[0]
-             clonedInventory = currentState.inventories[currentState.whoseTurn]
-
-              if move.buildType == TUNNEL:
-                  #add new tunnel to inventory
-                  clonedInventory.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
-              #calc based on build,
-              #predict to not build so not overbuilding
-
-
-         for ant in clonedInventory.ants:
-             ant.hasMoved = True
-
-
-         # set whoseTurn to my turn
-         currentState.whoseTurn = (currentState.whoseTurn + 1) % 2
-        return currentState
-
-
-
-    ##
     #getMove
     #Description: Gets the next move from the Player.
     #
@@ -318,16 +355,15 @@ class AIPlayer(Player):
         #Collect all the legal moves we can make
         moves = listAllLegalMoves(currentState)
 
-        if len(moves) == 1:
-            bestMove = moves[0]
-
         #evaluate all the moves based on the utility and find best move from it
         for move in moves:
             nextState = self.getNextState(currentState, move)
             util = -(self.findUtil(currentState, nextState))
+
             if util > bestUtil:
                 bestUtil = util
                 bestMove = move
+
         return bestMove
 
 
@@ -354,17 +390,19 @@ class AIPlayer(Player):
     def registerWin(self, hasWon):
         #make sure to save the utilities to the file after each win
         self.saveFile()
-
     ##
-    # saveFile - saves utils into a file
+    #saveFile
+    #Description: Saves the current state utilities into a file
     #
-    #
+    ##
     def saveFile(self):
-        file = open(fileName, 'w+')
+        file = open(self.fileName, 'w+')
         json.dump(self.stateList, file)
     ##
-    # loadFile - loads the utils from the file
+    #loadFile
+    #Description: Loads the file which contains the utilities
     #
+    ##
     def loadFile(self):
-        file = open(fileName, 'r')
+        file = open(self.fileName, 'r')
         json.load(file)
