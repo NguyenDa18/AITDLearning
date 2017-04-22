@@ -6,6 +6,7 @@ from Player import *
 from Constants import *
 from Construction import CONSTR_STATS
 from Ant import UNIT_STATS
+from Building import *
 from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
@@ -295,7 +296,7 @@ class AIPlayer(Player):
                         ant.carrying = False
 
             #reset hasMoved for all ants
-            ant.hasMoved = False
+            ant.hasMoved = True
 
             #calc based on build,
             #predict to not build so not overbuilding
@@ -331,34 +332,34 @@ class AIPlayer(Player):
               foePlayerHill = getConstrList(currentState, 1, (ANTHILL,))
 
         if currentState.phase == SETUP_PHASE_1:
-              return [(2,1), (7,1),
+            return [(2,1), (7,1),
                       (0,1), (1,0), (2,0), (3,0), \
                       (9,0), (9,1), (7,0), (8,0), (9,0)]
         elif currentState.phase == SETUP_PHASE_2:
-              moves = []
-              for i in range(0,2):
-                  move = None
-                  while move == None:
-                      #Choose any x location
-                      x = random.randint(0, 9)
-                      #Choose any y location on enemy side of the board
-                      y = random.randint(6, 9)
+            moves = []
+            for i in range(0,2):
+                move = None
+                while move == None:
+                    #Choose any x location
+                    x = random.randint(0, 9)
+                    #Choose any y location on enemy side of the board
+                    y = random.randint(6, 9)
 
-                      #Set the move if this space is empty and if the move is
-                      #going to take multiple turns to reach the food
-                      if currentState.board[x][y].constr == None and (x, y) not in moves and \
-                      stepsToReach(currentState, foePlayerTunnel[0].coords, (x,y)) > 4 and \
-                      stepsToReach(currentState, foePlayerHill[0].coords, (x,y)) > 4:
-                          move = (x, y)
-                          #Just need to make the space non-empty.
-                          currentState.board[x][y].constr == True
+                    #Set the move if this space is empty and if the move is
+                    #going to take multiple turns to reach the food
+                    if currentState.board[x][y].constr == None and (x, y) not in moves and \
+                    stepsToReach(currentState, foePlayerTunnel[0].coords, (x,y)) > 4 and \
+                    stepsToReach(currentState, foePlayerHill[0].coords, (x,y)) > 4:
+                        move = (x, y)
+                        #Just need to make the space non-empty.
+                        currentState.board[x][y].constr == True
 
-                      #if a calculated food placement cannot be found randomly place
-                      #the food (resolves game crashes against Random)
-                      elif currentState.board[x][y].constr == None and (x, y) not in moves:
-                          move = (x,y)
-                          currentState.board[x][y].constr == True
-                  moves.append(move)
+                    #if a calculated food placement cannot be found randomly place
+                    #the food (resolves game crashes against Random)
+                    elif currentState.board[x][y].constr == None and (x, y) not in moves:
+                        move = (x,y)
+                        currentState.board[x][y].constr == True
+                moves.append(move)
             return moves
         else:
             return None  #should never happen
@@ -427,7 +428,6 @@ class AIPlayer(Player):
     def saveFile(self):
         file = open(self.fileName, 'w+')
         json.dump(self.stateList, file)
-        file.close()
     ##
     #loadFile
     #Description: Loads the file which contains the utilities
@@ -436,4 +436,3 @@ class AIPlayer(Player):
     def loadFile(self):
         file = open(self.fileName, 'r')
         json.load(file)
-        file.close()
