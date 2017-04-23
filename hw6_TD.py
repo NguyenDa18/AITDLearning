@@ -11,6 +11,9 @@ from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
 
+# Determines if we keep learning states and updating utils
+LEARNING = False
+
 ##
 #AIPlayer
 #Description: The responsbility of this class is to interact with the game by
@@ -29,15 +32,26 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer,self).__init__(inputPlayerId, "NEWWW")
 
         self.flattendList = []
 
         #A list of utility states
         self.stateList = {}
 
+        #index of where I am in stateList
+        self.utilIndex = None
+
+        #Keeps track of states we have discovered
+        self.encounteredStates = 0
+
         #Keeps track of new states we encounter
         self.newStates = 0
+
+        #Keeps track of games played
+        self.gameCount = 0
+
+        #Whether or not first move has been made
+        self.firstMove = True
 
         # Discount Factor (Lambda)
         self.discountFactor = .8
@@ -47,6 +61,8 @@ class AIPlayer(Player):
 
         # Name of file to save utility states to (NOT USING CURRENTLY)
         self.fileName = "util.kaurn19_ nguyenda18"
+
+        super(AIPlayer,self).__init__(inputPlayerId, "DON GIVA NUX!")
 
     ##
     #consolidateState
@@ -160,7 +176,6 @@ class AIPlayer(Player):
         else:
             return -0.01
 
-
     ##
     #flattenList
     #Description: Takes a 2D list and turns it into a 1D list so we can use it
@@ -173,7 +188,6 @@ class AIPlayer(Player):
     #Return: The flattened list
     ##
     def flattenList(self, theList):
-        #self.flattenedList = []
 
         outString = ""
 
@@ -182,14 +196,10 @@ class AIPlayer(Player):
                 outString += str(item)
 
         return outString
-##        for list in theList:
-##            for value in list:
-##                self.flattendList.append(value)
-##        return self.flattenedList
 
     ##
     #findUtil
-    #Description: Gets the next move from the Player.
+    #Description: Gets the utility of a state
     #
     #Parameters:
     #   currentState - The current state in the game
@@ -235,17 +245,15 @@ class AIPlayer(Player):
 
         #set the player inventories
         clonedInventory = None
-        foeInventory = None
+        foeInv = None
         if currentState.whoseTurn == self.playerId:
             clonedInventory = getCurrPlayerInventory(currentState)
-            foeInventory = getEnemyInv(self,currentState)
+            foeInv = getEnemyInv(self,currentState)
         else:
             clonedInventory = getEnemyInv(self,currentState)
-            foeInventory = getCurrPlayerInventory(currentState)
+            foeInv = getCurrPlayerInventory(currentState)
 
         #check through all possible moves
-        #we predict it will move from start to end
-        #we predict it will move closer to tunnel ?
         if move.moveType == MOVE_ANT:
             startPos = move.coordList[0]
             finalPos = move.coordList[-1]
@@ -259,7 +267,45 @@ class AIPlayer(Player):
 
             #change the ant's coords and hasMoved status
             antToMove.coords = finalPos
-            antToMove.hasMoved = True
+
+            #get reference to potential construct at next position
+            construct = getConstrAt(currentState, finalPos)
+
+            #check if ant is on food, tunnel, or hill
+            if construct:
+                #deal with worker behavior
+                if antToMove.type == WORKER:
+                    #if ant is under food, freaking pick it up
+                    if construct.type == FOOD:
+                        if not antToMove.carrying:
+                            antToMove.carrying = True
+                    elif construct.type == TUNNEL or construct.type == ANTHILL:
+                        if antToMove.carrying:
+                            antToMove.carrying = False
+                            clonedInventory.foodCount += 1
+
+            #get list of coordinates of enemyAnts
+            foeAntCoords = [enemyAnt.coords for enemyAnt in foeInv.ants]
+
+            #list of coords of ants that the antToMove can attack
+            possibleAttacks = []
+
+            #go thru list of foe ant locations and check if we can attack
+            for coord in foeAntCoords:
+                if stepsToReach(currentState, coord, antToMove.coords) < 3:
+                    possibleAttacks.append(coord)
+                #if we can attack, pick random attack
+                if possibleAttacks:
+                    foeAnt = getAntAt(currentState, random.choice(possibleAttacks))
+                    attackStrength = UNIT_STATS[antToMove.type][ATTACK]
+                    if foeAnt.health <= attackStrength:
+                        foeAnt.health = 0
+
+                        #remove foe Ant from opponent's inventory
+                        foeInv.ants.remove(foeAnt)
+                    else:
+                        #lower foe ant's health because they were attacked
+                        foeAnt.health -= attackStrength
 
         #check if move is a build move
         elif move.moveType == BUILD:
@@ -278,25 +324,9 @@ class AIPlayer(Player):
                 antToBuild.hasMoved = True
                 clonedInventory.ants.append(antToBuild)
         elif move.moveType == END:
-            for ant in clonedInventory.ants:
-                constrUnderAnt = getConstrAt(currentState, ant.coords)
-                if constrUnderAnt is not None:
-                    #if constr is foe's and ant hasn't moved affect capture health of constructs
-                    if type(constrUnderAnt) is Building and not ant.hasMoved and not constrUnderAnt.player == currentState.whoseTurn:
-                        constrUnderAnt.captureHealth -= 1
-                        if constrUnderAnt == 0 and constrUnderAnt.type != ANTHILL:
-                            constrUnderAnt.player = currentState.whoseTurn
-                            constrUnderAnt.captureHealth = CONSTR_STATS[constrUnderAnt.type][CAP_HEALTH]
-                        #have all workers over food gathering the food
-                        elif constrUnderAnt.type == FOOD and ant.type == WORKER:
-                            ant.carrying = True
-                        #deposit all carrying food
-                    elif (constrUnderAnt.type == ANTHILL or constrUnderAnt.type == TUNNEL) and ant.carrying:
-                        clonedInventory.foodCount += 1
-                        ant.carrying = False
+            currentState.whoseTurn += 1
+            currentState.whoseTurn %= 2
 
-            #reset hasMoved for all ants
-            ant.hasMoved = True
 
             #calc based on build,
             #predict to not build so not overbuilding
@@ -375,24 +405,35 @@ class AIPlayer(Player):
     #Return: The Move to be made
     ##
     def getMove(self, currentState):
-        #Calculate all the utilities for the states
+        #Calculate all the utilities for the state
         self.findUtil(currentState)
 
         #Initialize the best move as None and best utility as low number (anything lower than -1)
         bestMove = None
-        bestUtil = -100
+        bestUtil = -1000
 
         #Collect all the legal moves we can make
         moves = listAllLegalMoves(currentState)
 
+        currentIndex = None
+        if self.utilIndex is not None:
+            currentIndex = self.utilIndex
+
         #evaluate all the moves based on the utility and find best move from it
         for move in moves:
+            #process the move on simulated state
             nextState = self.getNextState(currentState, move)
+
+            #get the utility of the current state based on next state
             util = -(self.findUtil(currentState, nextState))
 
             if util > bestUtil:
                 bestUtil = util
                 bestMove = move
+
+        #introduce 10% chance of making random mov ein order to explore
+        if random.random() < 0.1:
+            return moves[random.randint(0, len(moves)-1)]
 
         return bestMove
 
@@ -418,7 +459,12 @@ class AIPlayer(Player):
     #   hasWon - True if the player won the game. False if they lost (Boolean)
     #
     def registerWin(self, hasWon):
+
         #make sure to save the utilities to the file after each win
+        if hasWon:
+            self.stateList[self.utilIndex] = 1 #We have won and save the utility
+        else:
+            self.stateList[self.utilIndex] = -1 #We have lost and save the crappy utility
         self.saveFile()
     ##
     #saveFile
