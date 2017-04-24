@@ -2,6 +2,7 @@ import random
 import json # to save and load into a file
 import sys
 sys.path.append("..")  # so other modules can be found in parent dir
+import os.path as filePath
 from Player import *
 from Constants import *
 from Construction import CONSTR_STATS
@@ -463,6 +464,9 @@ class AIPlayer(Player):
     #   hasWon - True if the player won the game. False if they lost (Boolean)
     #
     def registerWin(self, hasWon):
+
+        # during active TD-learning (this will be disabled
+        # when learning has been finished)
         if LEARNING:
             # reset the number of states encountered
             self.statesEncountered = 0
@@ -481,7 +485,7 @@ class AIPlayer(Player):
             self.stateList[self.utilIndex] = 1 #We have won and save the utility
         else:
             self.stateList[self.utilIndex] = -1 #We have lost and save the crappy utility
-        #pass
+        #self.saveFile()
     ##
     #saveFile
     #Description: Saves the current state utilities into a file
