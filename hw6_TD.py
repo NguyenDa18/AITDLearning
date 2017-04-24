@@ -1,7 +1,10 @@
+__author__ = "Navreen Kaur and Danh Nguyen"
+
 import random
-import json # to save and load into a file
+import pickle
 import sys
 sys.path.append("..")  # so other modules can be found in parent dir
+import os.path as filePath
 from Player import *
 from Constants import *
 from Construction import CONSTR_STATS
@@ -12,6 +15,7 @@ from GameState import addCoords
 from AIPlayerUtils import *
 
 # Determines if we keep learning states and updating utils
+# Agent has been 'learned' so LEARNING is False
 LEARNING = False
 
 ##
@@ -32,7 +36,6 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-
         self.flattendList = []
 
         #A list of utility states
@@ -54,15 +57,20 @@ class AIPlayer(Player):
         self.firstMove = True
 
         # Discount Factor (Lambda)
-        self.discountFactor = .8
+        self.discountFactor = .95
 
         # FIXED alpha learning rate value
         self.alpha = .01
 
-        # Name of file to save utility states to (NOT USING CURRENTLY)
-        self.fileName = "util.kaurn19_ nguyenda18"
+        # Name of file to save utility states to
+        self.fileName = 'kaurn19_nguyenda18_td.utilities'
 
-        super(AIPlayer,self).__init__(inputPlayerId, "DON GIVA NUX!")
+        #loads file
+        print "Loading utilities from file...."
+        if filePath.isfile(self.fileName):
+            self.stateList = self.loadFile()
+
+        super(AIPlayer,self).__init__(inputPlayerId, "DON GIVA NUXXX!")
 
     ##
     #consolidateState
@@ -94,7 +102,7 @@ class AIPlayer(Player):
 
 
         #record the construct locations
-        myTunnel = getConstrList(currentState, self.playerId, (TUNNEL,))[0]
+        myTunnel = myInv.getTunnels()#getConstrList(currentState, self.playerId, (TUNNEL,))[0]
 
         myHill = myInv.getAnthill()
 
@@ -122,6 +130,7 @@ class AIPlayer(Player):
             for ant in myInv.ants:
                 if ant.type == WORKER:
                     if ant.carrying:
+
                         #return if should go to tunnel or anthill
                         targetConstr = myTunnel
                         if stepsToReach(currentState, worker.coords, myHill.coords) < stepsToReach(currentState, worker.coords, myTunnel.coords):
@@ -173,8 +182,7 @@ class AIPlayer(Player):
             return 1.0
         elif '-1' in simpleState:
             return -1.0
-        else:
-            return -0.01
+        return -0.01
 
     ##
     #flattenList
@@ -188,7 +196,6 @@ class AIPlayer(Player):
     #Return: The flattened list
     ##
     def flattenList(self, theList):
-
         outString = ""
 
         for list in theList:
@@ -224,6 +231,7 @@ class AIPlayer(Player):
             if flatNextState not in self.stateList:
                 self.stateList[flatNextState] = 0
             else:
+                #TD Learning Equation!
                 self.stateList[flatCurrentList] += (self.alpha *\
                 (self.reward(flatCurrentList) + self.discountFactor* \
                  self.stateList[flatNextState] - self.stateList[flatCurrentList]))
@@ -239,97 +247,94 @@ class AIPlayer(Player):
     #
     # Return: A GameState object that represents the prediction of the next state after a move has been made
     ##
-    def getNextState(self, currentState, move):
+    def getNextState(self, state, move):
         #make a copy of the current state
-        currentState = currentState.fastclone()
+        currentState = state.fastclone()
 
         #set the player inventories
-        clonedInventory = None
+        cloneInv = None
         foeInv = None
         if currentState.whoseTurn == self.playerId:
-            clonedInventory = getCurrPlayerInventory(currentState)
+            cloneInv = getCurrPlayerInventory(currentState)
             foeInv = getEnemyInv(self,currentState)
         else:
-            clonedInventory = getEnemyInv(self,currentState)
+            cloneInv = getEnemyInv(self,currentState)
             foeInv = getCurrPlayerInventory(currentState)
 
         #check through all possible moves
         if move.moveType == MOVE_ANT:
+
             startPos = move.coordList[0]
             finalPos = move.coordList[-1]
 
-            #take ant from start coord
-            antToMove = getAntAt(currentState, startPos)
+            ant = getAntAt(currentState, startPos)
 
             #if ant is null, return
-            if antToMove is None:
+            if ant is None:
                 return currentState
 
-            #change the ant's coords and hasMoved status
-            antToMove.coords = finalPos
+            # update the ant's location after the move
+            ant.coords = finalPos
 
             #get reference to potential construct at next position
             construct = getConstrAt(currentState, finalPos)
 
-            #check if ant is on food, tunnel, or hill
+            # predict moves based on location of ant
             if construct:
-                #deal with worker behavior
-                if antToMove.type == WORKER:
-                    #if ant is under food, freaking pick it up
+                # deal with worker behavior
+                if ant.type == WORKER:
+                    # if ant is under food, freaking pick it up
                     if construct.type == FOOD:
-                        if not antToMove.carrying:
-                            antToMove.carrying = True
+                        if not ant.carrying:
+                            ant.carrying = True
                     elif construct.type == TUNNEL or construct.type == ANTHILL:
-                        if antToMove.carrying:
-                            antToMove.carrying = False
-                            clonedInventory.foodCount += 1
+                        if ant.carrying:
+                            ant.carrying = False
+                            cloneInv.foodCount += 1
 
-            #get list of coordinates of enemyAnts
-            foeAntCoords = [enemyAnt.coords for enemyAnt in foeInv.ants]
+            # A list of enemy ants coords
+            foeAntCoords = [foeAnt.coords for foeAnt in foeInv.ants]
 
-            #list of coords of ants that the antToMove can attack
+            # list of possible attacks against enemy
             possibleAttacks = []
 
-            #go thru list of foe ant locations and check if we can attack
             for coord in foeAntCoords:
-                if stepsToReach(currentState, coord, antToMove.coords) < 3:
+                #calculate manhattan distance towards enemy coords
+                if UNIT_STATS[ant.type][RANGE] ** 2 >= abs(ant.coords[0] - coord[0]) ** 2 + abs(ant.coords[1] - coord[1]) ** 2:
                     possibleAttacks.append(coord)
-                #if we can attack, pick random attack
-                if possibleAttacks:
-                    foeAnt = getAntAt(currentState, random.choice(possibleAttacks))
-                    attackStrength = UNIT_STATS[antToMove.type][ATTACK]
-                    if foeAnt.health <= attackStrength:
-                        foeAnt.health = 0
 
-                        #remove foe Ant from opponent's inventory
-                        foeInv.ants.remove(foeAnt)
-                    else:
-                        #lower foe ant's health because they were attacked
-                        foeAnt.health -= attackStrength
+            # attack randomly
+            if possibleAttacks:
+                #attack and update stats
+                foeAnt = getAntAt(currentState, random.choice(possibleAttacks))
+                attackStrength = UNIT_STATS[ant.type][ATTACK]
+
+                if foeAnt.health <= attackStrength:
+                    foeAnt.health = 0
+                    foeInv.ants.remove(foeAnt)
+                else:
+                    foeAnt.health -= attackStrength
 
         #check if move is a build move
         elif move.moveType == BUILD:
             startPos = move.coordList[0]
-            clonedInventory = currentState.inventories[currentState.whoseTurn]
+            cloneInv = currentState.inventories[currentState.whoseTurn]
 
             if move.buildType == TUNNEL:
                 #add new tunnel to inventory
-                clonedInventory.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
+                cloneInv.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
                 tunnel = Building(startPos, TUNNEL, self.playerId)
-                clonedInventory.constrs.append(tunnel)
+                cloneInv.constrs.append(tunnel)
             else:
                 #add a new ant to our inventory
-                clonedInventory.foodCount -= UNIT_STATS[move.buildType][COST]
+                cloneInv.foodCount -= UNIT_STATS[move.buildType][COST]
                 antToBuild = Ant(startPos, move.buildType, self.playerId)
                 antToBuild.hasMoved = True
-                clonedInventory.ants.append(antToBuild)
+                cloneInv.ants.append(antToBuild)
         elif move.moveType == END:
+            #increment whose turn to indicate next player to move
             currentState.whoseTurn += 1
             currentState.whoseTurn %= 2
-
-
-            #calc based on build,
-            #predict to not build so not overbuilding
 
         return currentState
 
@@ -446,6 +451,8 @@ class AIPlayer(Player):
     #   currentState - A clone of the current state (GameState)
     #   attackingAnt - The ant currently making the attack (Ant)
     #   enemyLocation - The Locations of the Enemies that can be attacked (Location[])
+    #
+    #Return: random attack
     ##
     def getAttack(self, currentState, attackingAnt, enemyLocations):
         #Attack a random enemy.
@@ -460,25 +467,43 @@ class AIPlayer(Player):
     #
     def registerWin(self, hasWon):
 
+        # during active TD-learning (this will be disabled
+        # when learning has been finished)
+        if LEARNING:
+            # reset the number of states encountered
+            self.statesEncountered = 0
+
+            # reset how many new states were discovered
+            self.newStatesFound = 0
+
+            # increment the number of games played
+            self.gameCount += 1
+
+            # save the utilities to a file every 50 games
+            if self.gameCount % 50 == 0:
+                self.saveFile()
+
         #make sure to save the utilities to the file after each win
         if hasWon:
             self.stateList[self.utilIndex] = 1 #We have won and save the utility
         else:
             self.stateList[self.utilIndex] = -1 #We have lost and save the crappy utility
         self.saveFile()
+
     ##
     #saveFile
     #Description: Saves the current state utilities into a file
     #
     ##
     def saveFile(self):
-        file = open(self.fileName, 'w+')
-        json.dump(self.stateList, file)
+        with open("AI/" +self.fileName, 'wb') as file:
+            pickle.dump(self.stateList, file, 0)
     ##
     #loadFile
     #Description: Loads the file which contains the utilities
     #
+    #Return: the loaded file
     ##
     def loadFile(self):
-        file = open(self.fileName, 'r')
-        json.load(file)
+        with open(self.fileName, 'rb') as file:
+            return pickle.load(file)
