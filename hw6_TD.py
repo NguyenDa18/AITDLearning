@@ -463,28 +463,25 @@ class AIPlayer(Player):
     #   hasWon - True if the player won the game. False if they lost (Boolean)
     #
     def registerWin(self, hasWon):
-
-        # during active TD-learning (this will be disabled
-        # when learning has been finished)
-         if LEARNING:
-             # reset the number of states encountered
-             self.statesEncountered = 0
+        if LEARNING:
+            # reset the number of states encountered
+            self.statesEncountered = 0
         
-             # reset how many new states were discovered
-             self.newStatesFound = 0
+            # reset how many new states were discovered
+            self.newStatesFound = 0
         
-             # increment the number of games played
-             self.gameCount += 1
+            # increment the number of games played
+            self.gameCount += 1
         
-             # save the utilities to a file every 50 games
-             if self.gameCount % 50 == 0:
-                 self.saveFile()
+            # save the utilities to a file every 50 games
+            if self.gameCount % 50 == 0:
+                self.saveFile()
         #make sure to save the utilities to the file after each win
         if hasWon:
             self.stateList[self.utilIndex] = 1 #We have won and save the utility
         else:
             self.stateList[self.utilIndex] = -1 #We have lost and save the crappy utility
-        #self.saveFile()
+        #pass
     ##
     #saveFile
     #Description: Saves the current state utilities into a file
